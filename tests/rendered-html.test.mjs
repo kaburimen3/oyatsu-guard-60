@@ -46,6 +46,10 @@ test("supports deliberate item placement and gentle illustrated returns", async 
   assert.match(game, /vSign/);
   assert.match(game, /KeyS/);
   assert.match(game, /shiftKey/);
+  assert.match(game, /snapPlacement/);
+  assert.match(game, /drawPlacementPreview/);
+  assert.match(game, /レーン \$\{spot\.lane \+ 1\}・ここに置く/);
+  assert.match(game, /光るレーンへ自動吸着/);
   assert.match(game, /nursery-bg\.png/);
   assert.match(game, /snack-basket\.png/);
   assert.match(game, /保存・送信しません/);
