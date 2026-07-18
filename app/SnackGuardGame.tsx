@@ -6,7 +6,8 @@ type Phase = "ready" | "playing" | "result";
 type CameraState = "idle" | "loading" | "ready" | "error";
 type Kid = { id: number; lane: number; x: number; y: number; speed: number; skin: string; shirt: string; hair: string; phase: "approach" | "return"; bob: number; snack: boolean };
 type Spark = { x: number; y: number; vx: number; vy: number; life: number; color: string; text?: string };
-type Pulse = { x: number; y: number; age: number; ttl: number; used: boolean };
+type ToyKind = "normal" | "strong";
+type Pulse = { x: number; y: number; age: number; ttl: number; used: boolean; kind: ToyKind; hits: number };
 
 const W = 960;
 const H = 600;
@@ -58,9 +59,11 @@ export default function SnackGuardGame() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const kidAtlasRef = useRef<HTMLImageElement | null>(null);
+  const nurseryBgRef = useRef<HTMLImageElement | null>(null);
+  const snackBasketRef = useRef<HTMLImageElement | null>(null);
   const phaseRef = useRef<Phase>("ready");
   const cameraRef = useRef<CameraState>("idle");
-  const handRef = useRef({ x: W / 2, y: H / 2, active: false, pinched: false });
+  const handRef = useRef({ x: W / 2, y: H / 2, active: false, pinched: false, vSigned: false });
   const worldRef = useRef({ kids: [] as Kid[], sparks: [] as Spark[], pulses: [] as Pulse[], score: 0, snacks: 5, time: 60, combo: 0, best: 0, lastSpawn: 0, lastFrame: 0, started: 0, kidId: 0, lastPulse: 0 });
   const [phase, setPhase] = useState<Phase>("ready");
   const [camera, setCamera] = useState<CameraState>("idle");
@@ -69,7 +72,9 @@ export default function SnackGuardGame() {
 
   useEffect(() => {
     const atlas = new Image(); atlas.src = "/kids-atlas.png"; kidAtlasRef.current = atlas;
-    return () => { kidAtlasRef.current = null; };
+    const nursery = new Image(); nursery.src = "/nursery-bg.png"; nurseryBgRef.current = nursery;
+    const snacks = new Image(); snacks.src = "/snack-basket.png"; snackBasketRef.current = snacks;
+    return () => { kidAtlasRef.current = null; nurseryBgRef.current = null; snackBasketRef.current = null; };
   }, []);
 
   const tone = useCallback((freq = 520, duration = .08) => {
@@ -81,14 +86,20 @@ export default function SnackGuardGame() {
     } catch { /* sound is optional */ }
   }, []);
 
-  const makePulse = useCallback((x: number, y: number) => {
+  const makePulse = useCallback((x: number, y: number, kind: ToyKind = "normal") => {
     const world = worldRef.current; const now = performance.now();
     if (now - world.lastPulse < 650 || phaseRef.current !== "playing") return;
     world.lastPulse = now;
-    // Keep the playfield readable: the oldest toy disappears when a sixth is placed.
-    if (world.pulses.length >= 5) world.pulses.shift();
-    world.pulses.push({ x, y, age: 0, ttl: 4.5, used: false }); tone(680, .12);
-    for (let i = 0; i < 12; i++) world.sparks.push({ x, y, vx: Math.cos(i / 12 * Math.PI * 2) * 100, vy: Math.sin(i / 12 * Math.PI * 2) * 100, life: .55, color: i % 2 ? "#fff2a5" : "#f58a72" });
+    const limit = kind === "strong" ? 3 : 5;
+    const sameKind = world.pulses.filter(p => p.kind === kind);
+    if (sameKind.length >= limit) {
+      const oldest = sameKind.reduce((a, b) => a.age > b.age ? a : b);
+      world.pulses = world.pulses.filter(p => p !== oldest);
+    }
+    const strong = kind === "strong";
+    world.pulses.push({ x, y, age: 0, ttl: strong ? 12 : 4.5, used: false, kind, hits: strong ? 3 : 1 });
+    tone(strong ? 820 : 680, strong ? .18 : .12);
+    for (let i = 0; i < 12; i++) world.sparks.push({ x, y, vx: Math.cos(i / 12 * Math.PI * 2) * (strong ? 130 : 100), vy: Math.sin(i / 12 * Math.PI * 2) * (strong ? 130 : 100), life: .55, color: strong ? (i % 2 ? "#b8f5ff" : "#7d73e6") : (i % 2 ? "#fff2a5" : "#f58a72") });
   }, [tone]);
 
   const resetGame = useCallback(() => {
@@ -115,11 +126,16 @@ export default function SnackGuardGame() {
           lastVideo = video.currentTime; const result = tracker.detectForVideo(video, performance.now()); const marks = result.landmarks[0];
           if (marks) {
             const palm = marks[9], thumb = marks[4], index = marks[8]; const pinch = Math.hypot(thumb.x - index.x, thumb.y - index.y) < .065;
+            const fingerUp = (tip: number, pip: number) => marks[tip].y < marks[pip].y - .025;
+            const vSign = fingerUp(8, 6) && fingerUp(12, 10) && !fingerUp(16, 14) && !fingerUp(20, 18)
+              && Math.hypot(marks[8].x - marks[12].x, marks[8].y - marks[12].y) > .075;
             const x = (1 - palm.x) * W; const y = (.06 + palm.y * .88) * H;
             handRef.current.x += (x - handRef.current.x) * .36; handRef.current.y += (y - handRef.current.y) * .36; handRef.current.active = true;
-            if (pinch && !handRef.current.pinched) makePulse(handRef.current.x, handRef.current.y);
-            handRef.current.pinched = pinch; setGesture(pinch ? "おもちゃを置いたよ！" : "つまむと おもちゃを設置");
-          } else { handRef.current.active = false; handRef.current.pinched = false; setGesture("手を見せてね"); }
+            if (vSign && !handRef.current.vSigned) makePulse(handRef.current.x, handRef.current.y, "strong");
+            else if (pinch && !handRef.current.pinched && !vSign) makePulse(handRef.current.x, handRef.current.y, "normal");
+            handRef.current.pinched = pinch; handRef.current.vSigned = vSign;
+            setGesture(vSign ? "Vサイン！ つよいおもちゃを設置" : pinch ? "おもちゃを置いたよ！" : "つまむ＝通常 ／ Vサイン＝つよい");
+          } else { handRef.current.active = false; handRef.current.pinched = false; handRef.current.vSigned = false; setGesture("手を見せてね"); }
         }
         requestAnimationFrame(detect);
       };
@@ -130,7 +146,7 @@ export default function SnackGuardGame() {
     }
   }, [makePulse]);
 
-  const start = (withCamera: boolean) => { resetGame(); if (withCamera) void startCamera(); else { cameraRef.current = "idle"; setCamera("idle"); setGesture("クリックで おもちゃを設置"); handRef.current.active = true; } };
+  const start = (withCamera: boolean) => { resetGame(); if (withCamera) void startCamera(); else { cameraRef.current = "idle"; setCamera("idle"); setGesture("クリック＝通常 ／ Shift＋クリック＝つよい"); handRef.current.active = true; } };
 
   const defendKid = useCallback((kid: Kid) => {
     if (kid.phase === "return") return;
@@ -157,9 +173,15 @@ export default function SnackGuardGame() {
           if (kid.phase === "approach") {
             kid.y += kid.speed * dt;
             for (const p of world.pulses) {
-              if (!p.used && Math.hypot(kid.x - p.x, kid.y - p.y) < 54) {
-                p.used = true;
+              const reach = p.kind === "strong" ? 62 : 54;
+              if (!p.used && Math.hypot(kid.x - p.x, kid.y - p.y) < reach) {
+                p.hits--;
+                p.used = p.hits <= 0;
                 defendKid(kid);
+                if (p.kind === "strong" && p.hits > 0) {
+                  world.sparks.push({ x: p.x, y: p.y - 58, vx: 0, vy: -8, life: .8, color: "#fff", text: `あと${p.hits}回` });
+                }
+                break;
               }
             }
             if (kid.y > 505 && kid.phase === "approach") { kid.phase = "return"; kid.snack = true; world.snacks--; world.combo = 0; tone(170, .18); world.sparks.push({ x: kid.x, y: 478, vx: 0, vy: -20, life: 1, color: "#fff", text: "ひとつ もらった！" }); }
@@ -174,27 +196,48 @@ export default function SnackGuardGame() {
         if (now - lastHud > 120) { lastHud = now; setHud({ score: world.score, snacks: world.snacks, time: Math.ceil(world.time), combo: world.combo, best: world.best }); }
       }
 
-      ctx.clearRect(0, 0, W, H); ctx.imageSmoothingEnabled = false;
-      ctx.fillStyle = "#8bd16e"; ctx.fillRect(0, 0, W, H);
-      for (let yy = 0; yy < H; yy += 32) for (let xx = 0; xx < W; xx += 32) { ctx.fillStyle = (xx / 32 + yy / 32) % 2 ? "rgba(74,146,75,.09)" : "rgba(255,255,210,.08)"; ctx.fillRect(xx, yy, 32, 32); }
+      ctx.clearRect(0, 0, W, H); ctx.imageSmoothingEnabled = true;
+      const nursery = nurseryBgRef.current;
+      if (nursery?.complete && nursery.naturalWidth > 0) ctx.drawImage(nursery, 0, 0, W, H);
+      else {
+        ctx.fillStyle = "#8bd16e"; ctx.fillRect(0, 0, W, H);
+        for (let yy = 0; yy < H; yy += 32) for (let xx = 0; xx < W; xx += 32) { ctx.fillStyle = (xx / 32 + yy / 32) % 2 ? "rgba(74,146,75,.09)" : "rgba(255,255,210,.08)"; ctx.fillRect(xx, yy, 32, 32); }
+      }
       for (const x of LANES) { ctx.fillStyle = "#d7c88f"; ctx.fillRect(x - 44, 0, 88, H); ctx.fillStyle = "rgba(255,250,210,.28)"; ctx.fillRect(x - 36, 0, 9, H); }
       ctx.fillStyle = "#6da95a"; ctx.fillRect(0, 0, W, 34); for (let x = 0; x < W; x += 45) { ctx.fillStyle = x % 90 ? "#f7e66c" : "#fff6d2"; ctx.fillRect(x + 8, 12, 6, 6); }
       drawTower(ctx, 76, 300, "ガラガラ", "#eaa65f"); drawTower(ctx, 884, 300, "えほん", "#71b5ca");
-      rr(ctx, 382, 510, 196, 74, 8, "#c56d42", "#3c2a2b", 5); ctx.fillStyle = "#f1c55e"; ctx.fillRect(399, 526, 162, 12); ctx.fillStyle = "#fff0a0"; ctx.fillRect(415, 500, 30, 33); ctx.fillRect(465, 495, 30, 38); ctx.fillRect(515, 501, 27, 32); pixelText(ctx, "おやつ", 480, 563, 22, "#fff4c5");
+      const snackBasket = snackBasketRef.current;
+      if (snackBasket?.complete && snackBasket.naturalWidth > 0) ctx.drawImage(snackBasket, 382, 438, 196, 160);
+      else { rr(ctx, 382, 510, 196, 74, 8, "#c56d42", "#3c2a2b", 5); ctx.fillStyle = "#f1c55e"; ctx.fillRect(399, 526, 162, 12); ctx.fillStyle = "#fff0a0"; ctx.fillRect(415, 500, 30, 33); ctx.fillRect(465, 495, 30, 38); ctx.fillRect(515, 501, 27, 32); pixelText(ctx, "おやつ", 480, 563, 22, "#fff4c5"); }
       for (const kid of world.kids) drawKid(ctx, kid, now, kidAtlasRef.current);
       for (const p of world.pulses) {
         const fade = Math.min(1, (p.ttl - p.age) * 2.5);
         ctx.save(); ctx.globalAlpha = fade; ctx.translate(p.x, p.y);
-        // A soft play mat and a friendly bear toy make the placed object unmistakable.
-        ctx.beginPath(); ctx.ellipse(0, 15, 48, 25, 0, 0, Math.PI * 2); ctx.fillStyle = "#fff2a8"; ctx.fill(); ctx.lineWidth = 4; ctx.strokeStyle = "#d36a62"; ctx.stroke();
-        ctx.beginPath(); ctx.arc(0, -2, 25, 0, Math.PI * 2); ctx.fillStyle = "#d99a58"; ctx.fill(); ctx.strokeStyle = "#6b4534"; ctx.stroke();
-        ctx.beginPath(); ctx.arc(-20, -22, 9, 0, Math.PI * 2); ctx.arc(20, -22, 9, 0, Math.PI * 2); ctx.fillStyle = "#d99a58"; ctx.fill(); ctx.stroke();
-        ctx.fillStyle = "#3c2a2b"; ctx.beginPath(); ctx.arc(-8, -5, 3, 0, Math.PI * 2); ctx.arc(8, -5, 3, 0, Math.PI * 2); ctx.fill();
-        ctx.beginPath(); ctx.arc(0, 4, 5, 0, Math.PI * 2); ctx.fillStyle = "#6b4534"; ctx.fill();
+        if (p.kind === "strong") {
+          // The blue wind-up robot is larger and visually distinct from the one-use bear.
+          ctx.beginPath(); ctx.ellipse(0, 17, 56, 28, 0, 0, Math.PI * 2); ctx.fillStyle = "#c8efff"; ctx.fill(); ctx.lineWidth = 5; ctx.strokeStyle = "#5650a8"; ctx.stroke();
+          rr(ctx, -28, -18, 56, 51, 10, "#6f9fe8", "#383372", 5);
+          rr(ctx, -23, -49, 46, 35, 9, "#9adcf2", "#383372", 5);
+          ctx.fillStyle = "#383372"; ctx.beginPath(); ctx.arc(-10, -33, 4, 0, Math.PI * 2); ctx.arc(10, -33, 4, 0, Math.PI * 2); ctx.fill();
+          ctx.strokeStyle = "#383372"; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(0, -49); ctx.lineTo(0, -59); ctx.stroke(); ctx.beginPath(); ctx.arc(0, -62, 5, 0, Math.PI * 2); ctx.fillStyle = "#ffcc58"; ctx.fill(); ctx.stroke();
+          ctx.fillStyle = "#fff"; ctx.font = '900 16px "Yu Gothic", sans-serif'; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(`♥ ${p.hits}`, 0, 7);
+          pixelText(ctx, `耐久 ${p.hits}/3`, 0, -78, 14, "#5148a3");
+        } else {
+          ctx.beginPath(); ctx.ellipse(0, 15, 48, 25, 0, 0, Math.PI * 2); ctx.fillStyle = "#fff2a8"; ctx.fill(); ctx.lineWidth = 4; ctx.strokeStyle = "#d36a62"; ctx.stroke();
+          ctx.beginPath(); ctx.arc(0, -2, 25, 0, Math.PI * 2); ctx.fillStyle = "#d99a58"; ctx.fill(); ctx.strokeStyle = "#6b4534"; ctx.stroke();
+          ctx.beginPath(); ctx.arc(-20, -22, 9, 0, Math.PI * 2); ctx.arc(20, -22, 9, 0, Math.PI * 2); ctx.fillStyle = "#d99a58"; ctx.fill(); ctx.stroke();
+          ctx.fillStyle = "#3c2a2b"; ctx.beginPath(); ctx.arc(-8, -5, 3, 0, Math.PI * 2); ctx.arc(8, -5, 3, 0, Math.PI * 2); ctx.fill();
+          ctx.beginPath(); ctx.arc(0, 4, 5, 0, Math.PI * 2); ctx.fillStyle = "#6b4534"; ctx.fill();
+        }
         if (p.age < .3) { ctx.beginPath(); ctx.arc(0, 0, 54 + p.age * 45, 0, Math.PI * 2); ctx.strokeStyle = `rgba(255,255,255,${1 - p.age / .3})`; ctx.lineWidth = 7; ctx.stroke(); }
         ctx.restore();
       }
-      if (phaseRef.current === "playing") pixelText(ctx, `おもちゃ ${world.pulses.length}/5`, W - 88, 61, 16, "#755039");
+      if (phaseRef.current === "playing") {
+        const normalCount = world.pulses.filter(p => p.kind === "normal").length;
+        const strongCount = world.pulses.filter(p => p.kind === "strong").length;
+        pixelText(ctx, `くま ${normalCount}/5`, W - 86, 57, 15, "#755039");
+        pixelText(ctx, `ロボ ${strongCount}/3`, W - 86, 80, 15, "#5148a3");
+      }
       for (const s of world.sparks) {
         if (s.text) {
           ctx.save(); ctx.font = '900 17px "Yu Gothic", sans-serif'; const bubbleW = Math.max(104, ctx.measureText(s.text).width + 30); const bubbleX = Math.max(8, Math.min(W - bubbleW - 8, s.x - bubbleW / 2)); const bubbleY = Math.max(42, s.y - 25);
@@ -203,7 +246,7 @@ export default function SnackGuardGame() {
           pixelText(ctx, s.text, bubbleX + bubbleW / 2, bubbleY + 21, 17, "#d34d50"); ctx.restore();
         } else { ctx.fillStyle = s.color; ctx.fillRect(s.x - 4, s.y - 4, 8, 8); }
       }
-      if (handRef.current.active && phaseRef.current === "playing") { const h = handRef.current; ctx.beginPath(); ctx.arc(h.x, h.y, 42, 0, Math.PI * 2); ctx.fillStyle = "rgba(255,241,111,.16)"; ctx.fill(); ctx.lineWidth = 4; ctx.setLineDash([8, 6]); ctx.strokeStyle = h.pinched ? "#f26367" : "#fff"; ctx.stroke(); ctx.setLineDash([]); pixelText(ctx, "+", h.x, h.y, 25, h.pinched ? "#f26367" : "#755039"); }
+      if (handRef.current.active && phaseRef.current === "playing") { const h = handRef.current; ctx.beginPath(); ctx.arc(h.x, h.y, 42, 0, Math.PI * 2); ctx.fillStyle = h.vSigned ? "rgba(105,213,255,.22)" : "rgba(255,241,111,.16)"; ctx.fill(); ctx.lineWidth = 4; ctx.setLineDash([8, 6]); ctx.strokeStyle = h.vSigned ? "#655bd5" : h.pinched ? "#f26367" : "#fff"; ctx.stroke(); ctx.setLineDash([]); pixelText(ctx, h.vSigned ? "V" : "+", h.x, h.y, 25, h.vSigned ? "#5148a3" : h.pinched ? "#f26367" : "#755039"); }
       if (phaseRef.current === "playing" && world.combo >= 3) pixelText(ctx, `${world.combo} コンボ！`, W / 2, 60, 27, "#e85e50");
       raf = requestAnimationFrame(loop);
     };
@@ -215,7 +258,10 @@ export default function SnackGuardGame() {
     handRef.current.x = (clientX - rect.left) / rect.width * W; handRef.current.y = (clientY - rect.top) / rect.height * H; handRef.current.active = true;
   };
   useEffect(() => {
-    const key = (e: KeyboardEvent) => { if (e.code === "Space") { e.preventDefault(); makePulse(handRef.current.x, handRef.current.y); } };
+    const key = (e: KeyboardEvent) => {
+      if (e.code === "Space") { e.preventDefault(); makePulse(handRef.current.x, handRef.current.y, "normal"); }
+      if (e.code === "KeyS" && !e.repeat) { e.preventDefault(); makePulse(handRef.current.x, handRef.current.y, "strong"); }
+    };
     window.addEventListener("keydown", key); return () => window.removeEventListener("keydown", key);
   }, [makePulse]);
 
@@ -234,14 +280,14 @@ export default function SnackGuardGame() {
         </header>
         <div className="play-grid">
           <div className="screen-shell">
-            <canvas ref={canvasRef} className="game-canvas" width={W} height={H} aria-label="おやつを守るゲーム画面" onPointerMove={e => pointFromEvent(e.clientX, e.clientY)} onPointerDown={e => { pointFromEvent(e.clientX, e.clientY); makePulse(handRef.current.x, handRef.current.y); }} />
+            <canvas ref={canvasRef} className="game-canvas" width={W} height={H} aria-label="おやつを守るゲーム画面" onPointerMove={e => pointFromEvent(e.clientX, e.clientY)} onPointerDown={e => { pointFromEvent(e.clientX, e.clientY); makePulse(handRef.current.x, handRef.current.y, e.shiftKey ? "strong" : "normal"); }} />
             <video ref={videoRef} className="camera-pip" muted playsInline hidden={camera !== "ready"} aria-label="手の認識用カメラ映像" />
             {camera === "ready" && <span className="camera-dot" aria-hidden="true" />}
             {phase === "playing" && <div className="gesture-toast">{gesture}</div>}
             {phase !== "playing" && (
               <div className="screen-overlay">
                 <div className="start-card">
-                  {phase === "ready" ? <><p className="tiny">60秒のやさしい防衛ミッション</p><h2>今日のおやつを<br />守りきろう！</h2><p>手をつまむジェスチャーで、おもちゃを置こう。ちびっこがおもちゃに触れると、にこにこでおうちへ帰るよ。</p><div className="howto"><div><b>🖐️</b>手を動かす<br />置く場所を選ぶ</div><div><b>🤏</b>指をつまむ<br />おもちゃを設置</div></div></> : <><p className="tiny">MISSION COMPLETE</p><h2>{resultTitle}</h2><p>スコア <strong>{hud.score.toLocaleString()}</strong> ／ ベスト <strong>{Math.max(hud.best, hud.score).toLocaleString()}</strong><br />守ったおやつは {Math.max(0, hud.snacks)} こでした。</p></>}
+                  {phase === "ready" ? <><p className="tiny">60秒のやさしい防衛ミッション</p><h2>今日のおやつを<br />守りきろう！</h2><p>2種類のおもちゃを置こう。ちびっこがおもちゃに触れると、にこにこでおうちへ帰るよ。</p><div className="howto"><div><b>🤏</b>つまむ<br />くま（1回・最大5）</div><div><b>✌️</b>Vサイン<br />ロボ（3回・最大3）</div></div></> : <><p className="tiny">MISSION COMPLETE</p><h2>{resultTitle}</h2><p>スコア <strong>{hud.score.toLocaleString()}</strong> ／ ベスト <strong>{Math.max(hud.best, hud.score).toLocaleString()}</strong><br />守ったおやつは {Math.max(0, hud.snacks)} こでした。</p></>}
                   <div className="start-actions"><button className="pixel-button" onClick={() => start(true)}>📷 カメラでスタート</button><button className="pixel-button secondary" onClick={() => start(false)}>🖱️ マウスで遊ぶ</button></div>
                 </div>
               </div>
@@ -249,7 +295,7 @@ export default function SnackGuardGame() {
           </div>
           <aside className="side-panel">
             <section className="info-card"><h2>📡 ジェスチャー</h2><div className="status-line"><span className={`status-light ${camera}`} />{camLabel}</div></section>
-            <section className="info-card controls"><h2>🎮 あそびかた</h2><ul className="control-list"><li><span className="key">🖐️</span><span>手を動かして置く場所を選ぶ</span></li><li><span className="key">🤏</span><span>指をつまんでおもちゃを設置</span></li><li><span className="key">↖</span><span>クリックでも設置（最大5個）</span></li><li><span className="key">空</span><span>スペースキーでも設置できる</span></li></ul></section>
+            <section className="info-card controls"><h2>🎮 あそびかた</h2><ul className="control-list"><li><span className="key">🤏</span><span>つまむ：くま（1回・最大5個）</span></li><li><span className="key">✌️</span><span>Vサイン：つよいロボ（3回・最大3個）</span></li><li><span className="key">↖</span><span>クリック：くま／Shift＋クリック：ロボ</span></li><li><span className="key">空/S</span><span>Space：くま／S：ロボ</span></li></ul></section>
             <section className="info-card mission"><h2>🏡 今日のミッション</h2><p>ちびっこは敵じゃないよ。置いたおもちゃに触れると、お礼を言って画面の外へ帰ります。</p></section>
           </aside>
         </div>

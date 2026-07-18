@@ -23,7 +23,7 @@ test("server-renders the snack guard game", async () => {
   assert.match(html, /今日のおやつを/);
   assert.match(html, /カメラでスタート/);
   assert.match(html, /マウスで遊ぶ/);
-  assert.match(html, /配置|設置|置く/);
+  assert.match(html, /置こう|置いた|設置/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|ROOM RAID/i);
 });
 
@@ -35,13 +35,24 @@ test("supports deliberate item placement and gentle illustrated returns", async 
   ]);
   assert.match(game, /getUserMedia/);
   assert.match(game, /HandLandmarker/);
-  assert.match(game, /クリック[^\n]*(配置|置)/);
-  assert.match(game, /スペースキー[^\n]*(配置|置)/);
+  assert.match(game, /Shift＋クリック/);
+  assert.match(game, /Space：くま/);
   assert.match(game, /ありがとう/);
   assert.match(game, /ねんね/);
   assert.match(game, /drawImage/);
+  assert.match(game, /type ToyKind = "normal" \| "strong"/);
+  assert.match(game, /hits: strong \? 3 : 1/);
+  assert.match(game, /kind === "strong" \? 3 : 5/);
+  assert.match(game, /vSign/);
+  assert.match(game, /KeyS/);
+  assert.match(game, /shiftKey/);
+  assert.match(game, /nursery-bg\.png/);
+  assert.match(game, /snack-basket\.png/);
   assert.match(game, /保存・送信しません/);
   assert.match(layout, /おやつ防衛隊！/);
   assert.match(packageJson, /@mediapipe\/tasks-vision/);
   await assert.rejects(access(new URL("../app/_sites-preview", import.meta.url)));
+  await access(new URL("../public/kids-atlas.png", import.meta.url));
+  await access(new URL("../public/nursery-bg.png", import.meta.url));
+  await access(new URL("../public/snack-basket.png", import.meta.url));
 });
