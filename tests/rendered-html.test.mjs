@@ -23,10 +23,11 @@ test("server-renders the snack guard game", async () => {
   assert.match(html, /今日のおやつを/);
   assert.match(html, /カメラでスタート/);
   assert.match(html, /マウスで遊ぶ/);
+  assert.match(html, /配置|設置|置く/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|ROOM RAID/i);
 });
 
-test("keeps camera privacy and fallback controls visible", async () => {
+test("supports deliberate item placement and gentle illustrated returns", async () => {
   const [game, layout, packageJson] = await Promise.all([
     readFile(new URL("../app/SnackGuardGame.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
@@ -34,7 +35,11 @@ test("keeps camera privacy and fallback controls visible", async () => {
   ]);
   assert.match(game, /getUserMedia/);
   assert.match(game, /HandLandmarker/);
-  assert.match(game, /マウス移動＋クリック/);
+  assert.match(game, /クリック[^\n]*(配置|置)/);
+  assert.match(game, /スペースキー[^\n]*(配置|置)/);
+  assert.match(game, /ありがとう/);
+  assert.match(game, /ねんね/);
+  assert.match(game, /drawImage/);
   assert.match(game, /保存・送信しません/);
   assert.match(layout, /おやつ防衛隊！/);
   assert.match(packageJson, /@mediapipe\/tasks-vision/);
