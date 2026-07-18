@@ -111,6 +111,7 @@ export default function SnackGuardGame() {
   const [camera, setCamera] = useState<CameraState>("idle");
   const [hud, setHud] = useState({ score: 0, snacks: 5, time: 60, combo: 0, best: 0 });
   const [gesture, setGesture] = useState("マウスでも遊べます");
+  const [touchToy, setTouchToy] = useState<ToyKind>("normal");
 
   useEffect(() => {
     const atlas = new Image(); atlas.src = "/kids-atlas.png"; kidAtlasRef.current = atlas;
@@ -191,6 +192,12 @@ export default function SnackGuardGame() {
   }, [makePulse]);
 
   const start = (withCamera: boolean) => { resetGame(); if (withCamera) void startCamera(); else { cameraRef.current = "idle"; setCamera("idle"); setGesture("クリック＝通常 ／ Shift＋クリック＝つよい"); handRef.current.active = true; } };
+
+  const selectTouchToy = (kind: ToyKind) => {
+    setTouchToy(kind);
+    handRef.current.previewKind = kind;
+    setGesture(kind === "strong" ? "ロボを選択中：置きたい場所をタップ" : "くまを選択中：置きたい場所をタップ");
+  };
 
   const defendKid = useCallback((kid: Kid) => {
     if (kid.phase === "return") return;
@@ -328,7 +335,7 @@ export default function SnackGuardGame() {
         </header>
         <div className="play-grid">
           <div className="screen-shell">
-            <canvas ref={canvasRef} className="game-canvas" width={W} height={H} aria-label="おやつを守るゲーム画面" onPointerMove={e => pointFromEvent(e.clientX, e.clientY, e.shiftKey ? "strong" : "normal")} onPointerDown={e => { const kind = e.shiftKey ? "strong" : "normal"; pointFromEvent(e.clientX, e.clientY, kind); makePulse(handRef.current.x, handRef.current.y, kind); }} />
+            <canvas ref={canvasRef} className="game-canvas" width={W} height={H} aria-label="おやつを守るゲーム画面" onPointerMove={e => { const kind = e.pointerType === "mouse" ? (e.shiftKey ? "strong" : "normal") : touchToy; pointFromEvent(e.clientX, e.clientY, kind); }} onPointerDown={e => { const kind = e.pointerType === "mouse" ? (e.shiftKey ? "strong" : "normal") : touchToy; pointFromEvent(e.clientX, e.clientY, kind); makePulse(handRef.current.x, handRef.current.y, kind); }} />
             <video ref={videoRef} className="camera-pip" muted playsInline hidden={camera !== "ready"} aria-label="手の認識用カメラ映像" />
             {camera === "ready" && <span className="camera-dot" aria-hidden="true" />}
             {phase === "playing" && <div className="gesture-toast">{gesture}</div>}
@@ -341,6 +348,10 @@ export default function SnackGuardGame() {
               </div>
             )}
           </div>
+          {phase === "playing" && <div className="mobile-toy-bar" aria-label="タッチ用おもちゃ選択">
+            <button type="button" className={touchToy === "normal" ? "selected" : ""} aria-pressed={touchToy === "normal"} onClick={() => selectTouchToy("normal")}><span>🧸</span><b>くま</b><small>1回・最大5</small></button>
+            <button type="button" className={touchToy === "strong" ? "selected strong" : "strong"} aria-pressed={touchToy === "strong"} onClick={() => selectTouchToy("strong")}><span>🤖</span><b>つよいロボ</b><small>3回・最大3</small></button>
+          </div>}
           <aside className="side-panel">
             <section className="info-card"><h2>📡 ジェスチャー</h2><div className="status-line"><span className={`status-light ${camera}`} />{camLabel}</div></section>
             <section className="info-card controls"><h2>🎮 あそびかた</h2><ul className="control-list"><li><span className="key">↔</span><span>手を動かす：光るレーンへ自動吸着</span></li><li><span className="key">🤏</span><span>つまむ：くま（1回・最大5個）</span></li><li><span className="key">✌️</span><span>Vサイン：つよいロボ（3回・最大3個）</span></li><li><span className="key">↖</span><span>クリック：くま／Shift＋クリック：ロボ</span></li><li><span className="key">空/S</span><span>Space：くま／S：ロボ</span></li></ul></section>

@@ -28,10 +28,11 @@ test("server-renders the snack guard game", async () => {
 });
 
 test("supports deliberate item placement and gentle illustrated returns", async () => {
-  const [game, layout, packageJson] = await Promise.all([
+  const [game, layout, packageJson, css] = await Promise.all([
     readFile(new URL("../app/SnackGuardGame.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
   ]);
   assert.match(game, /getUserMedia/);
   assert.match(game, /HandLandmarker/);
@@ -50,6 +51,11 @@ test("supports deliberate item placement and gentle illustrated returns", async 
   assert.match(game, /drawPlacementPreview/);
   assert.match(game, /レーン \$\{spot\.lane \+ 1\}・ここに置く/);
   assert.match(game, /光るレーンへ自動吸着/);
+  assert.match(game, /タッチ用おもちゃ選択/);
+  assert.match(game, /pointerType === "mouse"/);
+  assert.match(css, /\.screen-overlay \{ position:fixed/);
+  assert.match(css, /\.mobile-toy-bar \{ display:grid/);
+  assert.match(css, /orientation:landscape/);
   assert.match(game, /nursery-bg\.png/);
   assert.match(game, /snack-basket\.png/);
   assert.match(game, /保存・送信しません/);
