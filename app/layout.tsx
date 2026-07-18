@@ -2,24 +2,22 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "ROOM RAID 60 | 会議の沈黙を倒すAIゲーム",
-  description:
-    "60人の声・拍手・選択で会議ボスを倒す、GPT-5.6搭載の参加型ファシリテーションゲーム。",
-  icons: {
-    icon: "/favicon.svg",
-    shortcut: "/favicon.svg",
-  },
+  title: "おやつ防衛隊！",
+  description: "手を動かしておやつを守る、やさしいピクセル・タワーディフェンス。",
   openGraph: {
-    title: "ROOM RAID 60",
-    description: "60 VOICES. ONE DECISION. 会議の沈黙を、60秒で倒せ。",
+    title: "おやつ防衛隊！",
+    description: "カメラに手をかざして、ちびっこたちを楽しくおうちへ帰そう。",
     type: "website",
+    images: [{ url: "/og.png", width: 1536, height: 1024, alt: "おやつ防衛隊！" }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "おやつ防衛隊！",
+    description: "手のジェスチャーで遊ぶ60秒タワーディフェンス",
+    images: ["/og.png"],
   },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return (
-    <html lang="ja">
-      <body>{children}</body>
-    </html>
-  );
+  return <html lang="ja"><body>{children}</body></html>;
 }
